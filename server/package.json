@@ -9,6 +9,12 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/nodemailer": "^6.4.17",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -17,16 +23,10 @@
     "express-rate-limit": "^7.5.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.3.1",
-    "nodemailer": "^6.10.0"
+    "nodemailer": "^6.10.0",
+    "typescript": "^5.8.2"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cookie-parser": "^1.4.8",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.1",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/nodemailer": "^6.4.17",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.8.2"
+    "ts-node-dev": "^2.0.0"
   }
 }
