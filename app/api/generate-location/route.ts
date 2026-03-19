@@ -2,10 +2,9 @@ import { type NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { checkRateLimit, getClientIp, errorResponse } from "@/lib/middleware";
 import {
-  getNearestRoadType,
+  getScenicRoadNear,
   countNearbyPOIs,
   getTerrainType,
-  BUSY_ROADS,
 } from "@/lib/osm";
 
 // Haversine distance in km
@@ -74,27 +73,34 @@ export async function GET(request: NextRequest) {
       ? Number(rawRadius)
       : 50;
 
-    // Try up to 5 candidate locations
-    const center =
-      DEFAULT_CENTERS[Math.floor(Math.random() * DEFAULT_CENTERS.length)];
+    const latParam = request.nextUrl.searchParams.get("lat");
+    const lngParam = request.nextUrl.searchParams.get("lng");
+
+    // Use user's real location if provided, otherwise fallback to random Indian location
+    const center = latParam && lngParam
+      ? { lat: Number(latParam), lng: Number(lngParam) }
+      : DEFAULT_CENTERS[Math.floor(Math.random() * DEFAULT_CENTERS.length)];
 
     let result = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const candidate = randomPointInCircle(center.lat, center.lng, radiusKm);
+    for (let attempt = 0; attempt < 8; attempt++) {
+      let candidate = randomPointInCircle(center.lat, center.lng, radiusKm);
 
-      const roadType = await getNearestRoadType(candidate.lat, candidate.lng, 300);
+      const scenicRoad = await getScenicRoadNear(candidate.lat, candidate.lng, 3000);
 
-      // Skip if no road found or road is too busy
-      if (roadType === "none") continue;
-      if (BUSY_ROADS.has(roadType)) continue;
+      // Skip if no scenic road found nearby
+      if (!scenicRoad) continue;
+
+      // Snap candidate exactly onto the scenic road!
+      candidate = { lat: scenicRoad.lat, lng: scenicRoad.lng };
+      const roadType = scenicRoad.type;
 
       const [poiCount, terrainType] = await Promise.all([
-        countNearbyPOIs(candidate.lat, candidate.lng, 500),
+        countNearbyPOIs(candidate.lat, candidate.lng, 2000), // Check wider area for POIs to avoid hidden residential
         getTerrainType(candidate.lat, candidate.lng),
       ]);
 
       // Footfall score: 100 = completely hidden, 0 = very busy
-      const footfallScore = Math.max(0, Math.min(100, 100 - poiCount * 5));
+      const footfallScore = Math.max(0, Math.min(100, 100 - poiCount * 4));
 
       const distanceKm = parseFloat(
         haversineKm(center.lat, center.lng, candidate.lat, candidate.lng).toFixed(1)
@@ -107,7 +113,9 @@ export async function GET(request: NextRequest) {
         footfallScore,
         roadType,
       };
-      break;
+      
+      // If we found a genuinely good hidden spot, stop searching
+      if (footfallScore >= 60) break;
     }
 
     if (!result) {

@@ -22,58 +22,23 @@ export default function Navbar() {
   }
 
   return (
-    <nav
-      style={{
-        background: "rgba(255,255,255,0.92)",
-        backdropFilter: "blur(12px)",
-        borderBottom: "1px solid var(--border)",
-        position: "sticky",
-        top: 0,
-        zIndex: 50,
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 1200,
-          margin: "0 auto",
-          padding: "0 24px",
-          height: 64,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
+    <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-[var(--border)]">
+      <div className="max-w-[1200px] mx-auto px-5 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link
           href="/"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            textDecoration: "none",
-            color: "var(--ink)",
-          }}
+          className="flex items-center gap-2.5 text-[var(--ink)] no-underline hover:opacity-80 transition-opacity"
         >
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              background: "var(--green)",
-              borderRadius: 10,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
+          <div className="w-9 h-9 bg-[var(--green)] rounded-[10px] flex items-center justify-center">
             <Compass size={20} color="white" />
           </div>
-          <span style={{ fontWeight: 700, fontSize: "1.15rem", letterSpacing: "-0.3px" }}>
+          <span className="font-bold text-[1.15rem] tracking-tight">
             Carpe Terra
           </span>
         </Link>
 
         {/* Desktop nav */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }} className="hidden sm:flex">
+        <div className="hidden sm:flex items-center gap-2">
           {isAuthenticated ? (
             <>
               <Link href="/explore" className="btn-ghost">
@@ -84,18 +49,11 @@ export default function Navbar() {
                 <BarChart3 size={16} />
                 Dashboard
               </Link>
-              <span
-                style={{
-                  width: 1,
-                  height: 24,
-                  background: "var(--border)",
-                  margin: "0 4px",
-                }}
-              />
-              <span style={{ fontSize: "0.85rem", color: "var(--ink-muted)", fontWeight: 500 }}>
+              <div className="w-[1px] h-6 bg-[var(--border)] mx-1" />
+              <span className="text-[0.85rem] text-[var(--ink-muted)] font-medium px-2">
                 {user?.name}
               </span>
-              <button onClick={handleLogout} className="btn-ghost" style={{ color: "var(--ink-muted)" }}>
+              <button onClick={handleLogout} className="btn-ghost text-[var(--ink-muted)]">
                 <LogOut size={15} />
                 Sign out
               </button>
@@ -110,42 +68,54 @@ export default function Navbar() {
 
         {/* Mobile hamburger */}
         <button
-          className="sm:hidden btn-ghost"
+          className="sm:hidden btn-ghost p-2"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label="Toggle menu"
+          aria-expanded={mobileOpen}
         >
-          {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+          {mobileOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
 
-      {/* Mobile menu */}
+      {/* Mobile menu dropdown */}
       {mobileOpen && (
-        <div
-          style={{
-            borderTop: "1px solid var(--border)",
-            padding: "16px 24px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        >
+        <div className="sm:hidden absolute top-16 left-0 w-full bg-white/95 backdrop-blur-md border-b border-[var(--border)] shadow-lg flex flex-col p-4 gap-2 animate-fade-in">
           {isAuthenticated ? (
             <>
-              <Link href="/explore" className="btn-ghost" onClick={() => setMobileOpen(false)}>
-                <Map size={16} />Explore
+              <Link
+                href="/explore"
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-[var(--sky-light)] text-[var(--ink)] font-medium transition-colors"
+                onClick={() => setMobileOpen(false)}
+              >
+                <Map size={18} className="text-[var(--ink-muted)]" /> Explore
               </Link>
-              <Link href="/dashboard" className="btn-ghost" onClick={() => setMobileOpen(false)}>
-                <BarChart3 size={16} />Dashboard
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-[var(--sky-light)] text-[var(--ink)] font-medium transition-colors"
+                onClick={() => setMobileOpen(false)}
+              >
+                <BarChart3 size={18} className="text-[var(--ink-muted)]" /> Dashboard
               </Link>
-              <button onClick={handleLogout} className="btn-ghost" style={{ justifyContent: "flex-start" }}>
-                <LogOut size={15} />Sign out
+              <div className="h-[1px] bg-[var(--border)] my-1" />
+              <div className="p-3 text-sm text-[var(--ink-muted)] font-medium">
+                Signed in as {user?.name}
+              </div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#FEF2F2] text-[#991B1B] font-medium transition-colors text-left"
+              >
+                <LogOut size={18} /> Sign out
               </button>
             </>
           ) : (
-            <>
-              <Link href="/login" className="btn-ghost" onClick={() => setMobileOpen(false)}>Sign in</Link>
-              <Link href="/signup" className="btn-primary" onClick={() => setMobileOpen(false)}>Get started</Link>
-            </>
+             <div className="flex flex-col gap-3">
+              <Link href="/login" className="btn-ghost justify-center py-2.5" onClick={() => setMobileOpen(false)}>
+                Sign in
+              </Link>
+              <Link href="/signup" className="btn-primary justify-center py-2.5" onClick={() => setMobileOpen(false)}>
+                Get started
+              </Link>
+            </div>
           )}
         </div>
       )}

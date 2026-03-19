@@ -81,26 +81,43 @@ export default function ExplorePage() {
     setSaveSuccess(false);
     setShowSaveForm(false);
     setIsGenerating(true);
-    try {
-      const res = await fetch(`/api/generate-location?radius=${selectedRadius}`);
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Failed to generate location.");
-        return;
-      }
-      setSelectedLocation({
-        lat: data.coordinates.lat,
-        lng: data.coordinates.lng,
-        distanceKm: data.distanceKm,
-        terrainType: data.terrainType,
-        footfallScore: data.footfallScore,
-        roadType: data.roadType,
-      });
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
+
+    if (!navigator.geolocation) {
+      setError("Geolocation is not supported by your browser.");
       setIsGenerating(false);
+      return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const res = await fetch(`/api/generate-location?radius=${selectedRadius}&lat=${latitude}&lng=${longitude}`);
+          const data = await res.json();
+          if (!res.ok) {
+            setError(data.error ?? "Failed to generate location.");
+            return;
+          }
+          setSelectedLocation({
+            lat: data.coordinates.lat,
+            lng: data.coordinates.lng,
+            distanceKm: data.distanceKm,
+            terrainType: data.terrainType,
+            footfallScore: data.footfallScore,
+            roadType: data.roadType,
+          });
+        } catch {
+          setError("Network error. Please try again.");
+        } finally {
+          setIsGenerating(false);
+        }
+      },
+      (geoError) => {
+        setIsGenerating(false);
+        setError("Location access denied. Please enable location services to discover routes near you.");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   }
 
   async function handleSave() {
@@ -159,60 +176,35 @@ export default function ExplorePage() {
   return (
     <>
       <Navbar />
-      <main
-        style={{
-          flex: 1,
-          display: "grid",
-          gridTemplateColumns: "380px 1fr",
-          minHeight: "calc(100vh - 64px)",
-          gap: 0,
-        }}
-        className="lg:grid-cols-[380px_1fr] flex flex-col"
-      >
+      <main className="flex flex-col lg:grid lg:grid-cols-[380px_1fr] min-h-[calc(100vh-64px)] w-full">
         {/* ── Sidebar ──────────────────────────────────────────────────────── */}
-        <aside
-          style={{
-            background: "var(--white)",
-            borderRight: "1px solid var(--border)",
-            padding: "28px 24px",
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 24,
-          }}
-        >
+        <aside className="bg-white border-b lg:border-b-0 lg:border-r border-[var(--border)] p-6 md:p-8 flex flex-col gap-6 overflow-y-auto lg:h-[calc(100vh-64px)] z-10 shadow-[0_4px_20px_rgba(0,0,0,0.03)] lg:shadow-none">
           {/* Header */}
           <div>
-            <h1 style={{ fontWeight: 700, fontSize: "1.3rem", marginBottom: 4 }}>
+            <h1 className="font-bold text-xl md:text-[1.3rem] mb-1">
               Route Generator
             </h1>
-            <p style={{ color: "var(--ink-muted)", fontSize: "0.875rem" }}>
+            <p className="text-[var(--ink-muted)] text-sm">
               Discover hidden roads near you
             </p>
           </div>
 
           {/* Radius selector */}
           <div>
-            <label style={{ display: "block", fontWeight: 600, fontSize: "0.85rem", marginBottom: 10 }}>
+            <label className="block font-semibold text-sm mb-2.5">
               Search Radius
             </label>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="flex gap-2">
               {([20, 50, 100] as const).map((r) => (
                 <button
                   key={r}
                   id={`radius-${r}`}
                   onClick={() => setSelectedRadius(r)}
+                  className="flex-1 py-2.5 rounded-[10px] font-semibold text-sm transition-all duration-150 border-2"
                   style={{
-                    flex: 1,
-                    padding: "10px 0",
-                    borderRadius: 10,
-                    border: `2px solid ${selectedRadius === r ? "var(--green)" : "var(--border)"}`,
+                    borderColor: selectedRadius === r ? "var(--green)" : "var(--border)",
                     background: selectedRadius === r ? "var(--green-mist)" : "transparent",
                     color: selectedRadius === r ? "var(--green-dark)" : "var(--ink-muted)",
-                    fontWeight: 600,
-                    fontSize: "0.875rem",
-                    cursor: "pointer",
-                    transition: "all 0.15s ease",
                   }}
                 >
                   {r} km
@@ -226,22 +218,11 @@ export default function ExplorePage() {
             id="generate-route-btn"
             onClick={handleGenerate}
             disabled={isGenerating}
-            className="btn-primary"
-            style={{ justifyContent: "center", width: "100%" }}
+            className="btn-primary w-full justify-center py-3"
           >
             {isGenerating ? (
               <>
-                <span
-                  className="animate-spin"
-                  style={{
-                    width: 16,
-                    height: 16,
-                    border: "2px solid rgba(255,255,255,0.3)",
-                    borderTopColor: "white",
-                    borderRadius: "50%",
-                    display: "inline-block",
-                  }}
-                />
+                <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full inline-block" />
                 Scanning roads…
               </>
             ) : (
@@ -254,63 +235,27 @@ export default function ExplorePage() {
 
           {/* Error */}
           {error && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                background: "#FEF2F2",
-                border: "1px solid #FECACA",
-                borderRadius: 10,
-                padding: "12px 14px",
-                color: "#991B1B",
-                fontSize: "0.85rem",
-              }}
-            >
-              <AlertCircle size={14} />
+            <div className="flex items-center gap-2 bg-[#FEF2F2] border border-[#FECACA] rounded-[10px] px-3.5 py-3 text-[#991B1B] text-sm">
+              <AlertCircle size={14} className="shrink-0" />
               {error}
             </div>
           )}
 
           {/* Save success */}
           {saveSuccess && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                background: "var(--green-mist)",
-                border: "1px solid var(--green-light)",
-                borderRadius: 10,
-                padding: "12px 14px",
-                color: "var(--green-dark)",
-                fontSize: "0.85rem",
-                fontWeight: 500,
-              }}
-            >
+            <div className="flex items-center gap-2 bg-[var(--green-mist)] border border-[var(--green-light)] rounded-[10px] px-3.5 py-3 text-[var(--green-dark)] text-sm font-medium">
               ✓ Location saved to your log!
             </div>
           )}
 
           {/* Result card */}
           {selectedLocation && (
-            <div
-              className="animate-fade-up"
-              style={{
-                background: "var(--cream)",
-                borderRadius: 12,
-                border: "1px solid var(--border)",
-                padding: "20px",
-                display: "flex",
-                flexDirection: "column",
-                gap: 14,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>Location Found</span>
+            <div className="animate-fade-up bg-[var(--cream)] rounded-xl border border-[var(--border)] p-4 md:p-5 flex flex-col gap-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold text-[0.95rem]">Location Found</span>
                 {footfallLabel && (
                   <span
-                    className="badge"
+                    className="badge shrink-0 text-xs"
                     style={{
                       background: `${footfallLabel.color}18`,
                       color: footfallLabel.color,
@@ -323,39 +268,27 @@ export default function ExplorePage() {
               </div>
 
               {/* Coordinate row */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-                <Navigation size={13} color="var(--sky-dark)" />
-                <span style={{ fontFamily: "monospace" }}>
+              <div className="flex items-center gap-2 text-[0.82rem] text-[var(--ink-soft)]">
+                <Navigation size={13} color="var(--sky-dark)" className="shrink-0" />
+                <span className="font-mono break-all">
                   {selectedLocation.lat.toFixed(5)}, {selectedLocation.lng.toFixed(5)}
                 </span>
               </div>
 
               {/* Stats grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div className="grid grid-cols-2 gap-2.5">
                 {[
                   { icon: Map, label: "Distance", value: `${selectedLocation.distanceKm} km` },
                   { icon: TreePine, label: "Terrain", value: selectedLocation.terrainType },
                   { icon: Info, label: "Road Type", value: selectedLocation.roadType },
-                  {
-                    icon: Compass,
-                    label: "Footfall Score",
-                    value: `${selectedLocation.footfallScore}/100`,
-                  },
+                  { icon: Compass, label: "Footfall", value: `${selectedLocation.footfallScore}/100` },
                 ].map(({ icon: Icon, label, value }) => (
-                  <div
-                    key={label}
-                    style={{
-                      background: "var(--white)",
-                      borderRadius: 8,
-                      padding: "10px 12px",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--ink-muted)", fontSize: "0.75rem", marginBottom: 4 }}>
+                  <div key={label} className="bg-white rounded-lg p-2.5 md:p-3 border border-[var(--border)] flex flex-col justify-center">
+                    <div className="flex items-center gap-1.5 text-[var(--ink-muted)] text-xs mb-1">
                       <Icon size={11} />
                       {label}
                     </div>
-                    <div style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--ink)" }}>
+                    <div className="font-semibold text-sm text-[var(--ink)] truncate">
                       {value}
                     </div>
                   </div>
@@ -363,13 +296,12 @@ export default function ExplorePage() {
               </div>
 
               {/* Action buttons */}
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="flex flex-col sm:flex-row gap-2 mt-1">
                 <a
                   href={`https://www.google.com/maps?q=${selectedLocation.lat},${selectedLocation.lng}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-secondary"
-                  style={{ flex: 1, justifyContent: "center", textDecoration: "none" }}
+                  className="btn-secondary flex-1 justify-center text-sm py-2.5 no-underline"
                 >
                   <ExternalLink size={14} />
                   Google Maps
@@ -377,8 +309,7 @@ export default function ExplorePage() {
                 <button
                   id="save-location-btn"
                   onClick={() => setShowSaveForm(!showSaveForm)}
-                  className="btn-primary"
-                  style={{ flex: 1, justifyContent: "center" }}
+                  className="btn-primary flex-1 justify-center text-sm py-2.5"
                 >
                   <Bookmark size={14} />
                   Save
@@ -387,22 +318,20 @@ export default function ExplorePage() {
 
               {/* Save form */}
               {showSaveForm && (
-                <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div className="animate-fade-in flex flex-col gap-2.5 mt-1 border-t border-[var(--border)] pt-4">
                   <textarea
                     ref={saveNoteRef}
                     placeholder="Add notes about this location (optional)…"
                     value={saveNote}
                     onChange={(e) => setSaveNote(e.target.value)}
-                    className="input-field"
-                    style={{ minHeight: 80, resize: "vertical" }}
+                    className="input-field min-h-[80px] resize-y text-sm"
                     maxLength={2000}
                   />
                   <button
                     id="confirm-save-btn"
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="btn-primary"
-                    style={{ justifyContent: "center" }}
+                    className="btn-primary justify-center w-full py-2.5 text-sm"
                   >
                     {isSaving ? "Saving…" : "Confirm Save"}
                   </button>
@@ -413,36 +342,14 @@ export default function ExplorePage() {
 
           {/* Empty state */}
           {!selectedLocation && !isGenerating && (
-            <div
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "40px 20px",
-                textAlign: "center",
-                gap: 12,
-                color: "var(--ink-muted)",
-              }}
-            >
-              <div
-                style={{
-                  width: 64,
-                  height: 64,
-                  background: "var(--green-mist)",
-                  borderRadius: 20,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
+            <div className="flex-1 flex flex-col items-center justify-center p-8 md:p-10 text-center gap-3 text-[var(--ink-muted)]">
+              <div className="w-16 h-16 bg-[var(--green-mist)] rounded-[20px] flex items-center justify-center shrink-0">
                 <Map size={30} color="var(--green)" />
               </div>
-              <p style={{ fontSize: "0.9rem", maxWidth: 220 }}>
+              <p className="text-sm max-w-[220px]">
                 Select a radius and click <strong>Generate</strong> to discover a hidden route
               </p>
-              <Link href="/dashboard" style={{ color: "var(--green)", fontSize: "0.85rem", fontWeight: 600, textDecoration: "none" }}>
+              <Link href="/dashboard" className="text-[var(--green)] text-sm font-semibold no-underline hover:underline mt-1">
                 View saved locations →
               </Link>
             </div>
@@ -450,12 +357,14 @@ export default function ExplorePage() {
         </aside>
 
         {/* ── Map ─────────────────────────────────────────────────────────── */}
-        <div style={{ position: "relative", minHeight: 500 }}>
-          <MapView
-            location={selectedLocation}
-            center={mapCenter}
-            zoom={zoom}
-          />
+        <div className="relative w-full h-[50vh] min-h-[400px] lg:h-auto lg:flex-1 lg:min-h-0 bg-[var(--sky-light)] z-0">
+          <div className="absolute inset-0">
+            <MapView
+              location={selectedLocation}
+              center={mapCenter}
+              zoom={zoom}
+            />
+          </div>
         </div>
       </main>
     </>

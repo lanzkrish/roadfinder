@@ -18,33 +18,45 @@ export type RoadType =
   | "none";
 
 /**
- * Query the nearest road type for a coordinate.
- * Returns the highway tag value or "none".
+ * Query the nearest scenic/hidden road for a coordinate.
+ * Returns the exact coordinates of the road and its type.
  */
-export async function getNearestRoadType(
+export async function getScenicRoadNear(
   lat: number,
   lng: number,
-  radiusMeters = 200
-): Promise<RoadType> {
+  radiusMeters = 3000
+): Promise<{ type: string; lat: number; lng: number } | null> {
   const query = `
     [out:json][timeout:10];
-    way(around:${radiusMeters},${lat},${lng})[highway];
-    out tags 1;
+    way(around:${radiusMeters},${lat},${lng})[highway~"^(unclassified|track|path|tertiary|dirt|bridleway)$"];
+    out center 1;
   `;
 
-  const res = await fetch(OVERPASS_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `data=${encodeURIComponent(query)}`,
-    signal: AbortSignal.timeout(12_000),
-  });
+  try {
+    const res = await fetch(OVERPASS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: AbortSignal.timeout(12_000),
+    });
 
-  if (!res.ok) return "none";
+    if (!res.ok) return null;
 
-  const data = await res.json();
-  const elements: Array<{ tags?: { highway?: string } }> = data.elements ?? [];
-  if (elements.length === 0) return "none";
-  return (elements[0].tags?.highway ?? "none") as RoadType;
+    const data = await res.json();
+    const elements = data.elements ?? [];
+    if (elements.length === 0) return null;
+
+    const center = elements[0].center;
+    if (!center) return null;
+
+    return {
+      type: elements[0].tags?.highway ?? "unclassified",
+      lat: center.lat,
+      lng: center.lon,
+    };
+  } catch (err) {
+    return null;
+  }
 }
 
 /**

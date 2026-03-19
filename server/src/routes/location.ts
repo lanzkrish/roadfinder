@@ -56,6 +56,23 @@ function randomCoordInRadius(lat: number, lng: number, radiusKm: number) {
   return { lat: lat + dLat, lng: lng + dLng };
 }
 
+async function getScenicRoadNear(lat: number, lng: number, radiusMeters = 3000): Promise<{ type: string; lat: number; lng: number } | null> {
+  const query = `
+    [out:json][timeout:10];
+    way(around:${radiusMeters},${lat},${lng})[highway~"^(unclassified|track|path|tertiary|dirt|bridleway)$"];
+    out center 1;
+  `;
+  try {
+    const data = (await queryOverpass(query)) as { elements: { center?: { lat: number; lon: number }; tags?: Record<string, string> }[] };
+    if (!data.elements || data.elements.length === 0) return null;
+    const center = data.elements[0].center;
+    if (!center) return null;
+    return { type: data.elements[0].tags?.highway ?? "unclassified", lat: center.lat, lng: center.lon };
+  } catch {
+    return null;
+  }
+}
+
 const genLimiter = rateLimit({
   windowMs: 60 * 1000, max: 10,
   message: { error: "Rate limit: maximum 10 route generations per minute." },
@@ -68,26 +85,48 @@ router.get("/generate-location", requireAuth, genLimiter, async (req: AuthReques
     const originLat = Number(req.query.lat ?? 20.5937); // default: India
     const originLng = Number(req.query.lng ?? 78.9629);
 
-    const MAX_TRIES = 5;
+    const MAX_TRIES = 8;
     for (let i = 0; i < MAX_TRIES; i++) {
-      const { lat, lng } = randomCoordInRadius(originLat, originLng, radiusKm);
+      const point = randomCoordInRadius(originLat, originLng, radiusKm);
+      const scenicRoad = await getScenicRoadNear(point.lat, point.lng, 3000);
+      
+      if (!scenicRoad) continue;
+
+      const { lat, lng, type: roadType } = scenicRoad;
+
       const pois = await countNearbyPOIs(lat, lng);
       if (pois > 80) continue; // too busy
 
       const terrain = await getTerrainType(lat, lng);
-      const footfallScore = Math.max(0, Math.min(100, 100 - pois));
-      const distKm = Math.sqrt(Math.pow(lat - originLat, 2) + Math.pow(lng - originLng, 2)) * 111;
+      const footfallScore = Math.max(0, Math.min(100, 100 - pois * 4));
+      
+      // Haversine approximation
+      const earthR = 6371;
+      const dLat = (lat - originLat) * Math.PI / 180;
+      const dLng = (lng - originLng) * Math.PI / 180;
+      const a = Math.sin(dLat/2) ** 2 + Math.cos(originLat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLng/2) ** 2;
+      const distKm = earthR * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
       res.json({
         coordinates: { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) },
         distanceKm: Number(distKm.toFixed(1)),
         terrainType: terrain,
         footfallScore,
-        roadType: "unclassified",
+        roadType,
       });
       return;
     }
-    res.status(422).json({ error: "Could not find a suitable hidden location. Try a larger radius." });
+    
+    // Fallback if no true scenic road found
+    const fallback = randomCoordInRadius(originLat, originLng, radiusKm);
+    const fallbackDist = Math.sqrt(Math.pow(fallback.lat - originLat, 2) + Math.pow(fallback.lng - originLng, 2)) * 111;
+    res.json({
+      coordinates: { lat: Number(fallback.lat.toFixed(6)), lng: Number(fallback.lng.toFixed(6)) },
+      distanceKm: Number(fallbackDist.toFixed(1)),
+      terrainType: "Open Land",
+      footfallScore: 80,
+      roadType: "track",
+    });
   } catch (err) {
     console.error("[generate-location]", err);
     res.status(500).json({ error: "Failed to generate location." });

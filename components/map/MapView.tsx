@@ -45,6 +45,7 @@ export default function MapView({ location, center, zoom }: MapViewProps) {
 
   return (
     <MapContainer
+      key={location ? `${location.lat}-${location.lng}` : "default-map"}
       center={location ? [location.lat, location.lng] : center}
       zoom={location ? 13 : zoom}
       style={{ height: "100%", width: "100%", borderRadius: 14 }}

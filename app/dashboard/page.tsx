@@ -32,36 +32,22 @@ function LocationCard({ loc }: { loc: SavedLocation }) {
       : "#9A3412";
 
   return (
-    <div
-      className="card card-hover"
-      style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 12 }}
-    >
+    <div className="card card-hover flex flex-col gap-3 p-5">
       {/* Top row */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              background: "var(--green-mist)",
-              borderRadius: 10,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 flex items-center justify-center shrink-0 rounded-lg bg-[var(--green-mist)]">
             <MapPin size={17} color="var(--green)" />
           </div>
           <div>
-            <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{loc.terrainType}</div>
-            <div style={{ color: "var(--ink-muted)", fontSize: "0.75rem", fontFamily: "monospace" }}>
+            <div className="font-semibold text-sm">{loc.terrainType}</div>
+            <div className="text-xs font-mono text-[var(--ink-muted)]">
               {loc.coordinates.lat.toFixed(4)}, {loc.coordinates.lng.toFixed(4)}
             </div>
           </div>
         </div>
         <span
-          className="badge"
+          className="badge shrink-0"
           style={{ background: `${footfallColor}18`, color: footfallColor, border: `1px solid ${footfallColor}30`, whiteSpace: "nowrap" }}
         >
           {loc.footfallScore}/100
@@ -69,18 +55,18 @@ function LocationCard({ loc }: { loc: SavedLocation }) {
       </div>
 
       {/* Meta */}
-      <div style={{ display: "flex", gap: 16, fontSize: "0.8rem", color: "var(--ink-muted)" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <Navigation size={11} />{loc.distanceKm} km away
+      <div className="flex gap-4 text-xs text-[var(--ink-muted)]">
+        <span className="flex items-center gap-1.5">
+          <Navigation size={11} />{loc.distanceKm} km
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span className="flex items-center gap-1.5">
           <Calendar size={11} />{date}
         </span>
       </div>
 
       {/* Notes */}
       {loc.notes && (
-        <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)", lineHeight: 1.5, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+        <p className="text-sm leading-relaxed text-[var(--ink-soft)] border-t border-[var(--border)] pt-2.5 mt-0.5">
           {loc.notes}
         </p>
       )}
@@ -90,7 +76,7 @@ function LocationCard({ loc }: { loc: SavedLocation }) {
         href={`https://www.google.com/maps?q=${loc.coordinates.lat},${loc.coordinates.lng}`}
         target="_blank"
         rel="noopener noreferrer"
-        style={{ color: "var(--green)", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}
+        className="flex items-center gap-1.5 text-xs font-semibold text-[var(--green)] mt-auto pt-1"
       >
         Open in Google Maps <ArrowRight size={12} />
       </a>
@@ -133,8 +119,8 @@ export default function DashboardPage() {
 
   if (!mounted) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--cream)" }}>
-        <div className="animate-spin" style={{ width: 32, height: 32, border: "3px solid var(--border)", borderTopColor: "var(--green)", borderRadius: "50%" }} />
+      <div className="min-h-screen flex items-center justify-center bg-[var(--cream)]">
+        <div className="animate-spin w-8 h-8 rounded-full border-4 border-[var(--border)] border-t-[var(--green)]" />
       </div>
     );
   }
@@ -152,73 +138,66 @@ export default function DashboardPage() {
   return (
     <>
       <Navbar />
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 24px" }}>
+      <main className="max-w-[1100px] mx-auto w-full px-5 py-8 md:py-10">
         {/* Header */}
-        <div style={{ marginBottom: 40 }}>
-          <h1 style={{ fontWeight: 700, fontSize: "1.8rem", marginBottom: 4 }}>
+        <div className="mb-8">
+          <h1 className="font-bold text-2xl md:text-3xl mb-1.5">
             Welcome back, {user?.name?.split(" ")[0]} 👋
           </h1>
-          <p style={{ color: "var(--ink-muted)" }}>Your exploration dashboard</p>
+          <p className="text-[var(--ink-muted)] text-sm md:text-base">Your exploration dashboard</p>
         </div>
 
         {/* Stats */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: 16,
-            marginBottom: 40,
-          }}
-        >
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-10">
           {stats.map(({ icon: Icon, label, value, color }) => (
-            <div key={label} className="card" style={{ padding: "22px 24px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <div style={{ width: 36, height: 36, background: `${color}18`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Icon size={18} color={color} />
+            <div key={label} className="card p-4 md:p-5 flex flex-col justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2.5 mb-3">
+                <div 
+                  className="w-8 h-8 md:w-9 md:h-9 shrink-0 rounded-[10px] flex items-center justify-center"
+                  style={{ background: `${color}18` }}
+                >
+                  <Icon size={16} color={color} className="md:w-[18px] md:h-[18px]" />
                 </div>
-                <span style={{ fontSize: "0.8rem", color: "var(--ink-muted)", fontWeight: 500 }}>{label}</span>
+                <span className="text-xs md:text-sm font-medium text-[var(--ink-muted)] leading-tight">{label}</span>
               </div>
-              <div style={{ fontSize: "1.9rem", fontWeight: 700, color: "var(--ink)" }}>{value}</div>
+              <div className="text-2xl md:text-[1.9rem] font-bold text-[var(--ink)]">{value}</div>
             </div>
           ))}
         </div>
 
         {/* Locations */}
         <div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-            <h2 style={{ fontWeight: 700, fontSize: "1.1rem" }}>Saved Locations</h2>
-            <Link href="/explore" className="btn-primary" style={{ padding: "9px 18px", fontSize: "0.85rem" }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <h2 className="font-bold text-lg md:text-[1.1rem]">Saved Locations</h2>
+            <Link href="/explore" className="btn-primary w-full sm:w-auto text-sm px-4 py-2.5 justify-center">
               <Map size={14} />
               Explore More
             </Link>
           </div>
 
           {isLoadingList ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="card" style={{ height: 160, background: "var(--cream)" }} />
+                <div key={i} className="card h-40 bg-[var(--cream)] animate-pulse" />
               ))}
             </div>
           ) : savedLocations.length === 0 ? (
-            <div
-              className="card"
-              style={{ padding: "60px 32px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}
-            >
-              <div style={{ width: 64, height: 64, background: "var(--green-mist)", borderRadius: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div className="card p-10 md:p-14 text-center flex flex-col items-center gap-3">
+              <div className="w-16 h-16 bg-[var(--green-mist)] rounded-[20px] flex items-center justify-center">
                 <MapPin size={30} color="var(--green)" />
               </div>
               <div>
-                <p style={{ fontWeight: 600, marginBottom: 4 }}>No saved locations yet</p>
-                <p style={{ color: "var(--ink-muted)", fontSize: "0.875rem" }}>
+                <p className="font-semibold mb-1">No saved locations yet</p>
+                <p className="text-sm text-[var(--ink-muted)]">
                   Generate your first hidden route in the Explore tab!
                 </p>
               </div>
-              <Link href="/explore" className="btn-primary" style={{ marginTop: 4 }}>
+              <Link href="/explore" className="btn-primary mt-2">
                 Start Exploring
               </Link>
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {savedLocations.map((loc) => (
                 <LocationCard key={loc._id} loc={loc} />
               ))}
