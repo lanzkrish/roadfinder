@@ -49,7 +49,11 @@ app.use("/api", locationRouter);
 app.use("/api/user", userRouter);
 
 // Health check
-app.get("/health", (_req, res) => res.json({ status: "ok", ts: new Date().toISOString() }));
+app.get(["/health", "/api/health"], (_req, res) => res.json({ 
+  status: "ok", 
+  uptime: process.uptime(),
+  ts: new Date().toISOString() 
+}));
 
 // 404
 app.use((_req, res) => res.status(404).json({ error: "Not found." }));
