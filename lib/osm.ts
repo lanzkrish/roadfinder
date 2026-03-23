@@ -37,7 +37,7 @@ async function queryOverpass(query: string): Promise<unknown> {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `data=${encodeURIComponent(query)}`,
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(6_000),
   });
   if (!res.ok) throw new Error("Overpass API error");
   return res.json();
@@ -66,7 +66,7 @@ export async function getElevation(lat: number, lng: number): Promise<number | n
   try {
     // First try Overpass ele tags on nearby peaks/nodes
     const overpassQuery = `
-      [out:json][timeout:8];
+      [out:json][timeout:6];
       node(around:500,${lat},${lng})["ele"];
       out 1;
     `;
@@ -80,7 +80,7 @@ export async function getElevation(lat: number, lng: number): Promise<number | n
     // Fallback to Open-Elevation API
     const res = await fetch(
       `${OPEN_ELEVATION_URL}?locations=${lat},${lng}`,
-      { signal: AbortSignal.timeout(8_000) }
+      { signal: AbortSignal.timeout(6_000) }
     );
     if (res.ok) {
       const json = await res.json();
@@ -101,7 +101,7 @@ export async function getScenicRoadNear(
   radiusMeters = 3000
 ): Promise<{ type: string; lat: number; lng: number } | null> {
   const query = `
-    [out:json][timeout:10];
+    [out:json][timeout:6];
     way(around:${radiusMeters},${lat},${lng})[highway~"^(unclassified|track|path|tertiary|dirt|bridleway)$"];
     out center 1;
   `;
@@ -136,14 +136,14 @@ export async function findRoadByType(
   switch (filter) {
     case "paved":
       query = `
-        [out:json][timeout:10];
+        [out:json][timeout:6];
         way(around:${radiusMeters},${lat},${lng})[highway~"^(tertiary|secondary|primary|residential)$"][surface~"^(paved|asphalt|concrete|tar)$"];
         out center 1;
       `;
       break;
     case "unpaved":
       query = `
-        [out:json][timeout:10];
+        [out:json][timeout:6];
         (
           way(around:${radiusMeters},${lat},${lng})[highway~"^(track|unclassified)$"][surface~"^(unpaved|gravel|dirt|ground|earth|mud|sand|compacted)$"];
           way(around:${radiusMeters},${lat},${lng})[highway~"^(track|unclassified)$"][!surface];
@@ -153,7 +153,7 @@ export async function findRoadByType(
       break;
     case "trekking":
       query = `
-        [out:json][timeout:10];
+        [out:json][timeout:6];
         (
           way(around:${radiusMeters},${lat},${lng})[highway~"^(path|footway|bridleway)$"];
           relation(around:${radiusMeters},${lat},${lng})[route=hiking];
@@ -224,7 +224,7 @@ export async function findTerrainFeature(
   }
 
   const query = `
-    [out:json][timeout:12];
+    [out:json][timeout:8];
     (
       ${parts.join("\n      ")}
     );
@@ -280,11 +280,15 @@ export async function isResidentialArea(
   lat: number,
   lng: number
 ): Promise<boolean> {
+  // Two-tier check:
+  // 1. Too many buildings within 400m (more than 2 = likely village or suburb)
+  // 2. A city, town, or suburb node within 1 km
   const query = `
-    [out:json][timeout:8];
+    [out:json][timeout:6];
     (
-      way(around:300,${lat},${lng})[landuse~"^(residential|commercial|retail|industrial)$"];
-      way(around:200,${lat},${lng})[building];
+      way(around:400,${lat},${lng})[landuse~"^(residential|commercial|retail|industrial)$"];
+      way(around:400,${lat},${lng})[building];
+      node(around:1000,${lat},${lng})[place~"^(city|town|suburb|borough|quarter|neighbourhood)$"];
     );
     out count;
   `;
@@ -294,8 +298,8 @@ export async function isResidentialArea(
       elements: { tags?: { total?: string } }[];
     };
     const count = Number(data.elements?.[0]?.tags?.total ?? 0);
-    // If there are more than 5 buildings/residential ways within 200-300m, it's residential
-    return count > 5;
+    // >2 matches = too built-up or too close to a city/town
+    return count > 2;
   } catch {
     return false;
   }
@@ -309,7 +313,7 @@ export async function countNearbyPOIs(
   radiusMeters = 500
 ): Promise<number> {
   const query = `
-    [out:json][timeout:10];
+    [out:json][timeout:6];
     (
       node(around:${radiusMeters},${lat},${lng})[amenity];
       node(around:${radiusMeters},${lat},${lng})[tourism];
@@ -323,7 +327,7 @@ export async function countNearbyPOIs(
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: `data=${encodeURIComponent(query)}`,
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(6_000),
     });
     if (!res.ok) return 0;
     const data = await res.json();
@@ -340,7 +344,7 @@ export async function getTerrainType(
   lng: number
 ): Promise<string> {
   const query = `
-    [out:json][timeout:10];
+    [out:json][timeout:6];
     (
       way(around:300,${lat},${lng})[natural];
       way(around:300,${lat},${lng})[landuse];
@@ -353,7 +357,7 @@ export async function getTerrainType(
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: `data=${encodeURIComponent(query)}`,
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(6_000),
     });
     if (!res.ok) return "Unknown";
     const data = await res.json();
@@ -393,7 +397,7 @@ export async function findNearbyFacilities(
 ): Promise<Facility[]> {
   // We run one combined query for all facility types
   const query = `
-    [out:json][timeout:15];
+    [out:json][timeout:8];
     (
       node(around:${radiusMeters},${lat},${lng})[amenity=hospital];
       way(around:${radiusMeters},${lat},${lng})[amenity=hospital];

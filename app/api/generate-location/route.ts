@@ -45,6 +45,8 @@ const VALID_TERRAINS = new Set(["hill", "forest", "lake", "beach", "straight_roa
 const VALID_ROADS = new Set(["paved", "unpaved", "trekking"]);
 
 export async function GET(request: NextRequest) {
+  // Hard budget: return fallback before Netlify's 26 s limit
+  const deadline = Date.now() + 22_000;
   try {
     // Auth
     let authPayload: Awaited<ReturnType<typeof requireAuth>>;
@@ -90,7 +92,7 @@ export async function GET(request: NextRequest) {
     let result = null;
     const hasTerrainFilter = terrainFilters.length > 0;
 
-    for (let attempt = 0; attempt < 10; attempt++) {
+    for (let attempt = 0; attempt < 5 && Date.now() < deadline; attempt++) {
       let candidate = randomPointInCircle(center.lat, center.lng, radiusKm);
 
       // ── Terrain filter: find a matching terrain feature near the candidate ──
@@ -109,28 +111,21 @@ export async function GET(request: NextRequest) {
         candidate = { ...terrainLocation };
       }
 
-      // ── Road filter: find matching road type near the candidate ──
+      // ── Road filter + residential check (parallel) ──
       let roadType: string;
-      if (roadFilter) {
-        const road = await findRoadByType(candidate.lat, candidate.lng, roadFilter, 3000);
-        if (!road) continue;
-        roadType = road.type;
-        // Only snap to road if no terrain filter, otherwise keep terrain position
-        if (!hasTerrainFilter) {
-          candidate = { lat: road.lat, lng: road.lng };
-        }
-      } else {
-        const scenicRoad = await getScenicRoadNear(candidate.lat, candidate.lng, 3000);
-        if (!scenicRoad) continue;
-        roadType = scenicRoad.type;
-        if (!hasTerrainFilter) {
-          candidate = { lat: scenicRoad.lat, lng: scenicRoad.lng };
-        }
-      }
+      const [roadResult, residential] = await Promise.all([
+        roadFilter
+          ? findRoadByType(candidate.lat, candidate.lng, roadFilter, 3000)
+          : getScenicRoadNear(candidate.lat, candidate.lng, 3000),
+        isResidentialArea(candidate.lat, candidate.lng),
+      ]);
 
-      // ── Reject residential/built-up areas ──
-      const residential = await isResidentialArea(candidate.lat, candidate.lng);
-      if (residential) continue; // Skip — too many houses/buildings
+      if (!roadResult || residential) continue;
+
+      roadType = roadResult.type;
+      if (!hasTerrainFilter) {
+        candidate = { lat: roadResult.lat, lng: roadResult.lng };
+      }
 
       // ── Compute POI count and terrain ──
       const [poiCount, terrainType, altitude] = await Promise.all([
@@ -179,20 +174,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (!result) {
-      // Fallback: return a random point even without road validation
-      const fallback = randomPointInCircle(center.lat, center.lng, radiusKm);
-      const [fallbackAlt] = await Promise.all([getElevation(fallback.lat, fallback.lng)]);
-      result = {
-        coordinates: fallback,
-        distanceKm: parseFloat(
-          haversineKm(center.lat, center.lng, fallback.lat, fallback.lng).toFixed(1)
-        ),
-        terrainType: "Open Land",
-        carpeTerraScore: 80,
-        roadType: "track",
-        isRemote: true,
-        altitude: fallbackAlt,
-      };
+      return errorResponse(
+        "No suitable location found in this area. Try selecting a larger search radius or removing terrain/road filters — dense or flat regions may have fewer hidden spots.",
+        404
+      );
     }
 
     return Response.json(result);

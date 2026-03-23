@@ -96,6 +96,7 @@ export default function ExplorePage() {
   const { addSavedLocation, isSaving, setIsSaving } = useExplorationStore();
 
   const [error, setError] = useState("");
+  const [noLocationFound, setNoLocationFound] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveNote, setSaveNote] = useState("");
   const [showSaveForm, setShowSaveForm] = useState(false);
@@ -131,6 +132,7 @@ export default function ExplorePage() {
 
   async function handleGenerate() {
     setError("");
+    setNoLocationFound(false);
     setSaveSuccess(false);
     setShowSaveForm(false);
     setIsGenerating(true);
@@ -167,7 +169,11 @@ export default function ExplorePage() {
           const res = await fetch(`/api/generate-location?${params}`);
           const data = await res.json();
           if (!res.ok) {
-            setError(data.error ?? "Failed to generate location.");
+            if (res.status === 404) {
+              setNoLocationFound(true);
+            } else {
+              setError(data.error ?? "Failed to generate location.");
+            }
             return;
           }
           const loc = {
@@ -384,6 +390,26 @@ export default function ExplorePage() {
             <div className="flex items-center gap-2 bg-[#FEF2F2] border border-[#FECACA] rounded-[10px] px-3.5 py-3 text-[#991B1B] text-sm">
               <AlertCircle size={14} className="shrink-0" />
               {error}
+            </div>
+          )}
+
+          {/* No location found warning */}
+          {noLocationFound && (
+            <div className="flex items-start gap-2.5 bg-[#FFF7ED] border border-[#FDBA74] rounded-[10px] px-3.5 py-3 text-[#9A3412] text-sm animate-fade-in">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <div>
+                <strong className="block text-[0.82rem] mb-1">No hidden spots found nearby</strong>
+                <span className="text-[0.8rem] leading-relaxed">
+                  This area may be too densely populated or flat. Try a{" "}
+                  <button
+                    onClick={() => { setSelectedRadius(100); setNoLocationFound(false); }}
+                    className="underline font-semibold"
+                  >
+                    100 km radius
+                  </button>
+                  {" "}or remove terrain/road filters.
+                </span>
+              </div>
             </div>
           )}
 
