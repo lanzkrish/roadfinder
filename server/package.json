@@ -1,6 +1,6 @@
 {
   "name": "carpaterra-server",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Carpe Terra — Express backend for Render",
   "main": "dist/index.js",
   "scripts": {
