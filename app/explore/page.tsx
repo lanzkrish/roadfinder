@@ -106,8 +106,9 @@ export default function ExplorePage() {
 
   useEffect(() => {
     setMounted(true);
-    // Wake up the Render backend on page load to avoid cold-start delays
-    fetch("/api/warmup").catch(() => {});
+    // Wake up the Render backend on page load to prevent cold-start on first generate
+    const RENDER = process.env.NEXT_PUBLIC_RENDER_API_URL ?? "http://localhost:8080";
+    fetch(`${RENDER}/api/health`).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -170,7 +171,20 @@ export default function ExplorePage() {
             params.set("road", selectedRoadType);
           }
 
-          const res = await fetch(`/api/generate-location?${params}`);
+          // Get JWT from Netlify (tiny/instant), then call Render directly
+          const RENDER = process.env.NEXT_PUBLIC_RENDER_API_URL ?? "http://localhost:8080";
+
+          const tokenRes = await fetch("/api/token");
+          if (!tokenRes.ok) {
+            setError("Session expired. Please log in again.");
+            return;
+          }
+          const { token } = await tokenRes.json();
+
+          const res = await fetch(
+            `${RENDER}/api/generate-location?${params}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
           const data = await res.json();
           if (!res.ok) {
             if (res.status === 404) {
