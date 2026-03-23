@@ -17,7 +17,12 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({
-    origin: FRONTEND_URL,
+    origin: (origin, cb) => {
+      // Allow localhost (any port) in dev, and the configured production URL
+      const allowed = [FRONTEND_URL, "http://localhost:3000", "http://localhost:3001"];
+      if (!origin || allowed.includes(origin)) return cb(null, true);
+      cb(new Error(`CORS: origin '${origin}' not allowed`));
+    },
     credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
