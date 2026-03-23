@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useMapStore } from "@/store/useMapStore";
+import { useMapStore, type TerrainFilter, type RoadFilter } from "@/store/useMapStore";
 import { useExplorationStore } from "@/store/useExplorationStore";
 import Navbar from "@/components/Navbar";
 import {
@@ -17,8 +17,19 @@ import {
   ExternalLink,
   AlertCircle,
   Info,
+  Mountain,
+  Trees,
+  Waves,
+  Sun,
+  Route,
+  ShieldAlert,
+  Hospital,
+  Shield,
+  Train,
+  Bus,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
-
 
 const MapView = dynamic(() => import("@/components/map/MapView"), {
   ssr: false,
@@ -40,6 +51,28 @@ const MapView = dynamic(() => import("@/components/map/MapView"), {
   ),
 });
 
+const TERRAIN_OPTIONS: { key: TerrainFilter; label: string; icon: typeof Mountain }[] = [
+  { key: "hill", label: "Hills", icon: Mountain },
+  { key: "forest", label: "Forest", icon: Trees },
+  { key: "lake", label: "Lake/Dam", icon: Waves },
+  { key: "beach", label: "Beach", icon: Sun },
+  { key: "straight_road", label: "Long Road", icon: Route },
+];
+
+const ROAD_OPTIONS: { key: RoadFilter | "all"; label: string }[] = [
+  { key: "all", label: "All Roads" },
+  { key: "paved", label: "Paved" },
+  { key: "unpaved", label: "Unpaved" },
+  { key: "trekking", label: "Trekking" },
+];
+
+const FACILITY_META: Record<string, { icon: typeof Hospital; color: string; label: string }> = {
+  hospital: { icon: Hospital, color: "#DC2626", label: "Hospital" },
+  police: { icon: Shield, color: "#2563EB", label: "Police Station" },
+  railway_station: { icon: Train, color: "#EA580C", label: "Railway Station" },
+  bus_stop: { icon: Bus, color: "#7C3AED", label: "Bus Stop" },
+};
+
 export default function ExplorePage() {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
@@ -49,9 +82,16 @@ export default function ExplorePage() {
     zoom,
     selectedRadius,
     isGenerating,
+    selectedTerrains,
+    selectedRoadType,
+    nearbyFacilities,
     setSelectedLocation,
     setIsGenerating,
     setSelectedRadius,
+    toggleTerrain,
+    selectAllTerrains,
+    setSelectedRoadType,
+    setNearbyFacilities,
   } = useMapStore();
   const { addSavedLocation, isSaving, setIsSaving } = useExplorationStore();
 
@@ -60,6 +100,7 @@ export default function ExplorePage() {
   const [saveNote, setSaveNote] = useState("");
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [showFacilities, setShowFacilities] = useState(true);
   const saveNoteRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
@@ -76,11 +117,24 @@ export default function ExplorePage() {
     );
   }
 
+  async function fetchFacilities(lat: number, lng: number) {
+    try {
+      const res = await fetch(`/api/nearby-facilities?lat=${lat}&lng=${lng}`);
+      if (res.ok) {
+        const data = await res.json();
+        setNearbyFacilities(data.facilities ?? []);
+      }
+    } catch {
+      // Silently fail — facilities are supplementary
+    }
+  }
+
   async function handleGenerate() {
     setError("");
     setSaveSuccess(false);
     setShowSaveForm(false);
     setIsGenerating(true);
+    setNearbyFacilities([]);
 
     if (!navigator.geolocation) {
       setError("Geolocation is not supported by your browser.");
@@ -92,27 +146,52 @@ export default function ExplorePage() {
       async (pos) => {
         try {
           const { latitude, longitude } = pos.coords;
-          const res = await fetch(`/api/generate-location?radius=${selectedRadius}&lat=${latitude}&lng=${longitude}`);
+
+          // Build query params
+          const params = new URLSearchParams({
+            radius: String(selectedRadius),
+            lat: String(latitude),
+            lng: String(longitude),
+          });
+
+          // Terrain filters
+          if (selectedTerrains.size > 0) {
+            params.set("terrain", Array.from(selectedTerrains).join(","));
+          }
+
+          // Road filter
+          if (selectedRoadType !== "all") {
+            params.set("road", selectedRoadType);
+          }
+
+          const res = await fetch(`/api/generate-location?${params}`);
           const data = await res.json();
           if (!res.ok) {
             setError(data.error ?? "Failed to generate location.");
             return;
           }
-          setSelectedLocation({
+          const loc = {
             lat: data.coordinates.lat,
             lng: data.coordinates.lng,
             distanceKm: data.distanceKm,
             terrainType: data.terrainType,
-            footfallScore: data.footfallScore,
+            carpeTerraScore: data.carpeTerraScore,
+            footfallScore: data.carpeTerraScore, // backward compat
             roadType: data.roadType,
-          });
+            isRemote: data.isRemote,
+            altitude: data.altitude,
+          };
+          setSelectedLocation(loc);
+
+          // Fetch nearby facilities in background
+          fetchFacilities(loc.lat, loc.lng);
         } catch {
           setError("Network error. Please try again.");
         } finally {
           setIsGenerating(false);
         }
       },
-      (geoError) => {
+      () => {
         setIsGenerating(false);
         setError("Location access denied. Please enable location services to discover routes near you.");
       },
@@ -133,7 +212,7 @@ export default function ExplorePage() {
           lng: selectedLocation.lng,
           notes: saveNote,
           terrainType: selectedLocation.terrainType,
-          footfallScore: selectedLocation.footfallScore,
+          footfallScore: selectedLocation.carpeTerraScore,
           distanceKm: selectedLocation.distanceKm,
           dateExplored: new Date().toISOString(),
         }),
@@ -148,7 +227,7 @@ export default function ExplorePage() {
         coordinates: { lat: selectedLocation.lat, lng: selectedLocation.lng },
         distanceKm: selectedLocation.distanceKm,
         terrainType: selectedLocation.terrainType,
-        footfallScore: selectedLocation.footfallScore,
+        footfallScore: selectedLocation.carpeTerraScore,
         notes: saveNote,
         imageUrl: "",
         dateExplored: new Date().toISOString(),
@@ -163,22 +242,23 @@ export default function ExplorePage() {
     }
   }
 
-
-  const footfallLabel =
-    selectedLocation?.footfallScore !== undefined
-      ? selectedLocation.footfallScore >= 80
+  const scoreLabel =
+    selectedLocation?.carpeTerraScore !== undefined
+      ? selectedLocation.carpeTerraScore >= 80
         ? { text: "Very Hidden", color: "var(--green)" }
-        : selectedLocation.footfallScore >= 50
+        : selectedLocation.carpeTerraScore >= 50
         ? { text: "Moderately Hidden", color: "#CA8A04" }
         : { text: "Some Activity", color: "#9A3412" }
       : null;
 
+  const isAllTerrains = selectedTerrains.size === 0;
+
   return (
     <>
       <Navbar />
-      <main className="flex flex-col lg:grid lg:grid-cols-[380px_1fr] min-h-[calc(100vh-64px)] w-full">
+      <main className="flex flex-col lg:grid lg:grid-cols-[400px_1fr] min-h-[calc(100vh-64px)] w-full">
         {/* ── Sidebar ──────────────────────────────────────────────────────── */}
-        <aside className="bg-white border-b lg:border-b-0 lg:border-r border-[var(--border)] p-6 md:p-8 flex flex-col gap-6 overflow-y-auto lg:h-[calc(100vh-64px)] z-10 shadow-[0_4px_20px_rgba(0,0,0,0.03)] lg:shadow-none">
+        <aside className="bg-white border-b lg:border-b-0 lg:border-r border-[var(--border)] p-6 md:p-8 flex flex-col gap-5 overflow-y-auto lg:h-[calc(100vh-64px)] z-10 shadow-[0_4px_20px_rgba(0,0,0,0.03)] lg:shadow-none">
           {/* Header */}
           <div>
             <h1 className="font-bold text-xl md:text-[1.3rem] mb-1">
@@ -208,6 +288,72 @@ export default function ExplorePage() {
                   }}
                 >
                   {r} km
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Terrain filter (multi-select) ─────────────────────────────── */}
+          <div>
+            <label className="block font-semibold text-sm mb-2.5">
+              Terrain Type
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {/* "All" pill */}
+              <button
+                id="terrain-all"
+                onClick={selectAllTerrains}
+                className="px-3 py-2 rounded-[10px] font-semibold text-xs transition-all duration-150 border-2 flex items-center gap-1.5"
+                style={{
+                  borderColor: isAllTerrains ? "var(--green)" : "var(--border)",
+                  background: isAllTerrains ? "var(--green-mist)" : "transparent",
+                  color: isAllTerrains ? "var(--green-dark)" : "var(--ink-muted)",
+                }}
+              >
+                <Compass size={13} />
+                All
+              </button>
+              {TERRAIN_OPTIONS.map(({ key, label, icon: Icon }) => {
+                const active = selectedTerrains.has(key);
+                return (
+                  <button
+                    key={key}
+                    id={`terrain-${key}`}
+                    onClick={() => toggleTerrain(key)}
+                    className="px-3 py-2 rounded-[10px] font-semibold text-xs transition-all duration-150 border-2 flex items-center gap-1.5"
+                    style={{
+                      borderColor: active ? "var(--green)" : "var(--border)",
+                      background: active ? "var(--green-mist)" : "transparent",
+                      color: active ? "var(--green-dark)" : "var(--ink-muted)",
+                    }}
+                  >
+                    <Icon size={13} />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Road type filter (single-select) ──────────────────────────── */}
+          <div>
+            <label className="block font-semibold text-sm mb-2.5">
+              Road Type
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {ROAD_OPTIONS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  id={`road-${key}`}
+                  onClick={() => setSelectedRoadType(key)}
+                  className="px-3 py-2 rounded-[10px] font-semibold text-xs transition-all duration-150 border-2"
+                  style={{
+                    borderColor: selectedRoadType === key ? "var(--green)" : "var(--border)",
+                    background: selectedRoadType === key ? "var(--green-mist)" : "transparent",
+                    color: selectedRoadType === key ? "var(--green-dark)" : "var(--ink-muted)",
+                  }}
+                >
+                  {label}
                 </button>
               ))}
             </div>
@@ -248,21 +394,35 @@ export default function ExplorePage() {
             </div>
           )}
 
+          {/* ── Safety Warning ────────────────────────────────────────────── */}
+          {selectedLocation?.isRemote && (
+            <div className="flex items-start gap-2.5 bg-[#FFF7ED] border border-[#FDBA74] rounded-[12px] px-4 py-3.5 text-[#9A3412] text-sm animate-fade-in">
+              <ShieldAlert size={18} className="shrink-0 mt-0.5" />
+              <div>
+                <strong className="block text-[0.82rem] mb-0.5">⚠️ Remote Area Warning</strong>
+                <span className="text-[0.8rem] leading-relaxed">
+                  This location is very remote and may be unsafe for solo travellers.
+                  Always travel with friends and inform someone of your plans before visiting.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Result card */}
           {selectedLocation && (
             <div className="animate-fade-up bg-[var(--cream)] rounded-xl border border-[var(--border)] p-4 md:p-5 flex flex-col gap-3.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-bold text-[0.95rem]">Location Found</span>
-                {footfallLabel && (
+                {scoreLabel && (
                   <span
                     className="badge shrink-0 text-xs"
                     style={{
-                      background: `${footfallLabel.color}18`,
-                      color: footfallLabel.color,
-                      border: `1px solid ${footfallLabel.color}30`,
+                      background: `${scoreLabel.color}18`,
+                      color: scoreLabel.color,
+                      border: `1px solid ${scoreLabel.color}30`,
                     }}
                   >
-                    {footfallLabel.text}
+                    {scoreLabel.text}
                   </span>
                 )}
               </div>
@@ -281,7 +441,10 @@ export default function ExplorePage() {
                   { icon: Map, label: "Distance", value: `${selectedLocation.distanceKm} km` },
                   { icon: TreePine, label: "Terrain", value: selectedLocation.terrainType },
                   { icon: Info, label: "Road Type", value: selectedLocation.roadType },
-                  { icon: Compass, label: "Footfall", value: `${selectedLocation.footfallScore}/100` },
+                  { icon: Compass, label: "Carpe Terra Score", value: `${selectedLocation.carpeTerraScore}/100` },
+                  ...(selectedLocation.altitude !== null
+                    ? [{ icon: Mountain, label: "Altitude", value: `${selectedLocation.altitude}m` }]
+                    : []),
                 ].map(({ icon: Icon, label, value }) => (
                   <div key={label} className="bg-white rounded-lg p-2.5 md:p-3 border border-[var(--border)] flex flex-col justify-center">
                     <div className="flex items-center gap-1.5 text-[var(--ink-muted)] text-xs mb-1">
@@ -294,6 +457,47 @@ export default function ExplorePage() {
                   </div>
                 ))}
               </div>
+
+              {/* ── Nearby Facilities ───────────────────────────────────────── */}
+              {nearbyFacilities.length > 0 && (
+                <div className="border-t border-[var(--border)] pt-3 mt-1">
+                  <button
+                    onClick={() => setShowFacilities(!showFacilities)}
+                    className="flex items-center justify-between w-full text-left text-sm font-semibold mb-2"
+                  >
+                    <span>Nearby Facilities</span>
+                    {showFacilities ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                  {showFacilities && (
+                    <div className="flex flex-col gap-2 animate-fade-in">
+                      {nearbyFacilities.map((f) => {
+                        const meta = FACILITY_META[f.type];
+                        if (!meta) return null;
+                        const FIcon = meta.icon;
+                        return (
+                          <div
+                            key={f.type}
+                            className="flex items-center gap-2.5 bg-white rounded-lg p-2.5 border border-[var(--border)]"
+                          >
+                            <div
+                              className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+                              style={{ background: `${meta.color}15` }}
+                            >
+                              <FIcon size={14} color={meta.color} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-semibold truncate">{f.name}</div>
+                              <div className="text-[0.7rem] text-[var(--ink-muted)]">
+                                {meta.label} · {f.distanceKm} km away
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Action buttons */}
               <div className="flex flex-col sm:flex-row gap-2 mt-1">
@@ -347,7 +551,7 @@ export default function ExplorePage() {
                 <Map size={30} color="var(--green)" />
               </div>
               <p className="text-sm max-w-[220px]">
-                Select a radius and click <strong>Generate</strong> to discover a hidden route
+                Select filters and click <strong>Generate</strong> to discover a hidden route
               </p>
               <Link href="/dashboard" className="text-[var(--green)] text-sm font-semibold no-underline hover:underline mt-1">
                 View saved locations →
@@ -363,6 +567,7 @@ export default function ExplorePage() {
               location={selectedLocation}
               center={mapCenter}
               zoom={zoom}
+              facilities={nearbyFacilities}
             />
           </div>
         </div>

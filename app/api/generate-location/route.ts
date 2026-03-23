@@ -3,25 +3,16 @@ import { requireAuth } from "@/lib/auth";
 import { checkRateLimit, getClientIp, errorResponse } from "@/lib/middleware";
 import {
   getScenicRoadNear,
+  findRoadByType,
+  findTerrainFeature,
   countNearbyPOIs,
   getTerrainType,
+  getElevation,
+  isResidentialArea,
+  haversineKm,
+  type TerrainFilter,
+  type RoadFilter,
 } from "@/lib/osm";
-
-// Haversine distance in km
-function haversineKm(
-  lat1: number, lng1: number,
-  lat2: number, lng2: number
-): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 // Random point within radiusKm of center using uniform distribution
 function randomPointInCircle(
@@ -50,6 +41,9 @@ const DEFAULT_CENTERS = [
   { lat: 20.1809, lng: 83.9628 },  // Odisha
 ];
 
+const VALID_TERRAINS = new Set(["hill", "forest", "lake", "beach", "straight_road"]);
+const VALID_ROADS = new Set(["paved", "unpaved", "trekking"]);
+
 export async function GET(request: NextRequest) {
   try {
     // Auth
@@ -76,59 +70,128 @@ export async function GET(request: NextRequest) {
     const latParam = request.nextUrl.searchParams.get("lat");
     const lngParam = request.nextUrl.searchParams.get("lng");
 
+    // Parse terrain filters (comma-separated)
+    const terrainParam = request.nextUrl.searchParams.get("terrain") ?? "";
+    const terrainFilters: TerrainFilter[] = terrainParam
+      .split(",")
+      .filter((t) => VALID_TERRAINS.has(t)) as TerrainFilter[];
+
+    // Parse road filter
+    const roadParam = request.nextUrl.searchParams.get("road") ?? "";
+    const roadFilter: RoadFilter | null = VALID_ROADS.has(roadParam)
+      ? (roadParam as RoadFilter)
+      : null;
+
     // Use user's real location if provided, otherwise fallback to random Indian location
     const center = latParam && lngParam
       ? { lat: Number(latParam), lng: Number(lngParam) }
       : DEFAULT_CENTERS[Math.floor(Math.random() * DEFAULT_CENTERS.length)];
 
     let result = null;
-    for (let attempt = 0; attempt < 8; attempt++) {
+    const hasTerrainFilter = terrainFilters.length > 0;
+
+    for (let attempt = 0; attempt < 10; attempt++) {
       let candidate = randomPointInCircle(center.lat, center.lng, radiusKm);
 
-      const scenicRoad = await getScenicRoadNear(candidate.lat, candidate.lng, 3000);
+      // ── Terrain filter: find a matching terrain feature near the candidate ──
+      // Keep terrainLocation separate so the road snap doesn't move us away
+      let terrainLocation: { lat: number; lng: number } | null = null;
 
-      // Skip if no scenic road found nearby
-      if (!scenicRoad) continue;
+      if (hasTerrainFilter) {
+        const terrainHit = await findTerrainFeature(
+          candidate.lat,
+          candidate.lng,
+          terrainFilters,
+          5000
+        );
+        if (!terrainHit) continue; // No matching terrain near this random point
+        terrainLocation = { lat: terrainHit.lat, lng: terrainHit.lng };
+        candidate = { ...terrainLocation };
+      }
 
-      // Snap candidate exactly onto the scenic road!
-      candidate = { lat: scenicRoad.lat, lng: scenicRoad.lng };
-      const roadType = scenicRoad.type;
+      // ── Road filter: find matching road type near the candidate ──
+      let roadType: string;
+      if (roadFilter) {
+        const road = await findRoadByType(candidate.lat, candidate.lng, roadFilter, 3000);
+        if (!road) continue;
+        roadType = road.type;
+        // Only snap to road if no terrain filter, otherwise keep terrain position
+        if (!hasTerrainFilter) {
+          candidate = { lat: road.lat, lng: road.lng };
+        }
+      } else {
+        const scenicRoad = await getScenicRoadNear(candidate.lat, candidate.lng, 3000);
+        if (!scenicRoad) continue;
+        roadType = scenicRoad.type;
+        if (!hasTerrainFilter) {
+          candidate = { lat: scenicRoad.lat, lng: scenicRoad.lng };
+        }
+      }
 
-      const [poiCount, terrainType] = await Promise.all([
-        countNearbyPOIs(candidate.lat, candidate.lng, 2000), // Check wider area for POIs to avoid hidden residential
-        getTerrainType(candidate.lat, candidate.lng),
+      // ── Reject residential/built-up areas ──
+      const residential = await isResidentialArea(candidate.lat, candidate.lng);
+      if (residential) continue; // Skip — too many houses/buildings
+
+      // ── Compute POI count and terrain ──
+      const [poiCount, terrainType, altitude] = await Promise.all([
+        countNearbyPOIs(candidate.lat, candidate.lng, 2000),
+        hasTerrainFilter ? Promise.resolve(null) : getTerrainType(candidate.lat, candidate.lng),
+        getElevation(candidate.lat, candidate.lng),
       ]);
 
-      // Footfall score: 100 = completely hidden, 0 = very busy
-      const footfallScore = Math.max(0, Math.min(100, 100 - poiCount * 4));
+      // Carpe Terra score: 100 = completely hidden, 0 = very busy
+      const carpeTerraScore = Math.max(0, Math.min(100, 100 - poiCount * 4));
+      const isRemote = carpeTerraScore >= 80;
+
+      // When terrain filter is active, require a minimum quality
+      if (hasTerrainFilter && carpeTerraScore < 40) continue;
 
       const distanceKm = parseFloat(
         haversineKm(center.lat, center.lng, candidate.lat, candidate.lng).toFixed(1)
       );
 
+      // If terrain filter was used, use the terrain from the filter hit
+      const finalTerrainType = hasTerrainFilter
+        ? terrainFilters.map((t) => {
+            const labels: Record<TerrainFilter, string> = {
+              hill: "Hill Area",
+              forest: "Forest",
+              lake: "Lake/Dam",
+              beach: "Beach",
+              straight_road: "Straight Road",
+            };
+            return labels[t];
+          }).join(", ")
+        : (terrainType ?? "Open Land");
+
       result = {
         coordinates: candidate,
         distanceKm,
-        terrainType,
-        footfallScore,
+        terrainType: finalTerrainType,
+        carpeTerraScore,
         roadType,
+        isRemote,
+        altitude,
       };
-      
+
       // If we found a genuinely good hidden spot, stop searching
-      if (footfallScore >= 60) break;
+      if (carpeTerraScore >= 60) break;
     }
 
     if (!result) {
       // Fallback: return a random point even without road validation
       const fallback = randomPointInCircle(center.lat, center.lng, radiusKm);
+      const [fallbackAlt] = await Promise.all([getElevation(fallback.lat, fallback.lng)]);
       result = {
         coordinates: fallback,
         distanceKm: parseFloat(
           haversineKm(center.lat, center.lng, fallback.lat, fallback.lng).toFixed(1)
         ),
         terrainType: "Open Land",
-        footfallScore: 80,
+        carpeTerraScore: 80,
         roadType: "track",
+        isRemote: true,
+        altitude: fallbackAlt,
       };
     }
 
