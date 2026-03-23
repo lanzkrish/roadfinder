@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     const data = await res.json();
     return Response.json(data, { status: res.status });
   } catch (err) {
-    console.error("[generate-location proxy]", err);
-    return errorResponse("Failed to reach location service. Please try again.", 503);
+    console.error("[generate-location proxy] upstream:", upstream.toString(), "error:", err);
+    return errorResponse("Location service is unavailable. Please try again in a moment.", 503);
   }
 }
