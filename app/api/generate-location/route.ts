@@ -33,14 +33,30 @@ export async function GET(request: NextRequest) {
     const cookieStore = await cookies();
     const token = cookieStore.get("ct_token")?.value ?? "";
 
+    // 9s timeout — stays under Netlify's 10s free-tier limit
+    // If Render is cold-starting this will abort cleanly instead of letting
+    // Netlify kill the function with a 502.
     const res = await fetch(upstream.toString(), {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(9_000),
     });
 
     const data = await res.json();
     return Response.json(data, { status: res.status });
   } catch (err) {
+    const isTimeout =
+      err instanceof Error &&
+      (err.name === "TimeoutError" || err.name === "AbortError");
+
+    if (isTimeout) {
+      console.warn("[generate-location proxy] Render cold-start timeout:", upstream.toString());
+      return errorResponse(
+        "The location service is waking up — this can take up to 30 seconds on first use. Please try again in a moment.",
+        503
+      );
+    }
+
     console.error("[generate-location proxy] upstream:", upstream.toString(), "error:", err);
-    return errorResponse("Location service is unavailable. Please try again in a moment.", 503);
+    return errorResponse("Location service is unavailable. Please try again.", 503);
   }
 }

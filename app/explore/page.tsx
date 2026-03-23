@@ -104,7 +104,11 @@ export default function ExplorePage() {
   const [showFacilities, setShowFacilities] = useState(true);
   const saveNoteRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+    // Wake up the Render backend on page load to avoid cold-start delays
+    fetch("/api/warmup").catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (mounted && !isAuthenticated) router.push("/login");
